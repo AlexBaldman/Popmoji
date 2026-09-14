@@ -21,6 +21,19 @@ open dist/Popmoji.app
 
 ## Install from the command line
 
+With Homebrew:
+
+```sh
+brew install --cask AlexBaldman/popmoji/popmoji
+```
+
+Or install the tap once, then use the short form:
+
+```sh
+brew tap AlexBaldman/popmoji
+brew install --cask popmoji
+```
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/AlexBaldman/Popmoji/main/install.sh | bash
 ```
