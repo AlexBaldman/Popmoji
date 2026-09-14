@@ -19,6 +19,18 @@ bash scripts/build.sh
 open dist/Popmoji.app
 ```
 
+## Install from the command line
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/AlexBaldman/Popmoji/main/install.sh | bash
+```
+
+The installer puts Popmoji in `/Applications` when possible, falls back to `~/Applications`, verifies the app signature, and opens it. To install a specific release or location:
+
+```sh
+POPMOJI_VERSION=0.1.1 POPMOJI_INSTALL_DIR="$HOME/Applications" bash install.sh
+```
+
 Requires macOS 13 or newer and Swift 5.9+. The emoji metadata is bundled from [GitHub’s gemoji](https://github.com/github/gemoji) under its MIT license.
 
 ## License
