@@ -84,7 +84,7 @@ struct ContentSearch {
         return items.compactMap { item -> (ContentItem, Int)? in
             let names = ([item.name] + item.aliases)
                 .map { $0.lowercased().replacingOccurrences(of: "_", with: " ") }
-            let tags = item.tags.map(\.lowercased)
+            let tags = item.tags.map { $0.lowercased() }
             let haystack = item.searchableText.replacingOccurrences(of: "_", with: " ")
 
             let score: Int
