@@ -1,6 +1,6 @@
 import Foundation
 
-enum ContentKind: String, Codable, CaseIterable {
+enum ContentKind: String, Codable, CaseIterable, Hashable {
     case unicodeEmoji
     case customEmoji
     case sticker
@@ -104,7 +104,7 @@ struct ContentSearch {
     }
 }
 
-enum InsertionMode: String, Codable, CaseIterable {
+enum InsertionMode: String, Codable, CaseIterable, Hashable {
     case plainText
     case richImage
     case adaptiveImageGlyph
