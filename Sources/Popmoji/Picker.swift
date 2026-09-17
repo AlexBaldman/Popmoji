@@ -37,7 +37,8 @@ final class ActionButton: NSButton {
 }
 
 final class EmojiTile: NSButton {
-    let item: Emoji
+    let item: ContentItem
+    let image: NSImage?
     var rendered: String
     var selected = false { didSet { needsDisplay = true } }
     var favorite = false { didSet { needsDisplay = true } }
@@ -45,12 +46,12 @@ final class EmojiTile: NSButton {
     var onHover: (() -> Void)?
     var onFavorite: (() -> Void)?
     var onAlias: (() -> Void)?
-    init(item: Emoji, rendered: String, frame: NSRect) {
-        self.item = item; self.rendered = rendered
+    init(item: ContentItem, rendered: String, image: NSImage?, frame: NSRect) {
+        self.item = item; self.rendered = rendered; self.image = image
         super.init(frame: frame)
         isBordered = false; title = ""; target = self; action = #selector(choose)
         toolTip = "\(item.description)  :\(item.name):"
-        setAccessibilityLabel(item.description)
+        setAccessibilityLabel(item.altText)
         setAccessibilityHelp("Insert :\(item.name):. Right-click for favorites and custom aliases.")
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -58,9 +59,13 @@ final class EmojiTile: NSButton {
         if selected || isHighlighted {
             Palette.lavender.setFill(); NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 12, yRadius: 12).fill()
         }
-        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont(name: "Apple Color Emoji", size: 29) ?? NSFont.systemFont(ofSize: 29)]
-        let size = (rendered as NSString).size(withAttributes: attributes)
-        (rendered as NSString).draw(at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2), withAttributes: attributes)
+        if let image {
+            image.draw(in: bounds.insetBy(dx: 11, dy: 8), from: .zero, operation: .sourceOver, fraction: 1)
+        } else {
+            let attributes: [NSAttributedString.Key: Any] = [.font: NSFont(name: "Apple Color Emoji", size: 29) ?? NSFont.systemFont(ofSize: 29)]
+            let size = (rendered as NSString).size(withAttributes: attributes)
+            (rendered as NSString).draw(at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2), withAttributes: attributes)
+        }
         if favorite {
             Palette.purple.setFill(); NSBezierPath(ovalIn: NSRect(x: bounds.maxX - 9, y: 5, width: 4, height: 4)).fill()
         }
@@ -93,7 +98,9 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
     let panel: PickerPanel
     private let library: EmojiLibrary
     private let prefs: Preferences
-    var onChoose: ((Emoji) -> Void)?
+    private let catalog: ContentCatalog
+    private let assetResolver = BundledContentAssetResolver()
+    var onChoose: ((ContentItem) -> Void)?
     var onSettings: (() -> Void)?
     var onClose: (() -> Void)?
     private var search: NSSearchField!
@@ -110,7 +117,7 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
     private var accessBanner: NSView!
     private var sidebarButtons: [String: ActionButton] = [:]
     private var tiles: [EmojiTile] = []
-    private var results: [Emoji] = []
+    private var results: [ContentItem] = []
     private var selected = 0
     private var category = "For you"
     private var keyMonitor: Any?
@@ -120,6 +127,10 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
 
     init(library: EmojiLibrary, preferences: Preferences) {
         self.library = library; prefs = preferences
+        catalog = try! ContentCatalog(providers: [
+            UnicodeEmojiProvider(library: library),
+            BundledContentPackProvider(manifestName: "pickleball")
+        ])
         panel = PickerPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 570),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
@@ -227,20 +238,20 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
     }
     func controlTextDidChange(_ obj: Notification) { refresh() }
     func refresh() {
-        let source: [Emoji]
+        let source: [ContentItem]
         switch category {
-        case "Favorites": source = prefs.favorites.compactMap { library.byName[$0] }
-        case "Recent": source = prefs.recents.compactMap { library.byName[$0] }
+        case "Favorites": source = prefs.favorites.compactMap { library.byName[$0]?.contentItem }
+        case "Recent": source = prefs.recents.compactMap { library.byName[$0]?.contentItem }
         case "For you":
             let defaults = ["wave", "sparkles", "heart", "joy", "fire", "rocket", "+1", "tada", "eyes", "thinking", "sob", "laughing", "100", "pray", "clap", "muscle", "sunglasses", "heart_eyes", "blush", "wink", "upside_down_face", "melting_face", "coffee", "pizza", "sunny", "rainbow", "star", "white_check_mark", "brain", "seedling", "partying_face", "handshake", "grin", "smiling_face_with_three_hearts", "ok_hand", "v", "raised_hands", "cat", "dog", "butterfly", "ocean", "earth_americas", "balloon", "birthday", "musical_note", "bulb", "gem", "speech_balloon"]
             var seen = Set<String>()
-            source = (prefs.recents.prefix(16) + prefs.favorites + defaults).filter { seen.insert($0).inserted }.compactMap { library.byName[$0] }
-        case "All emoji": source = library.all
-        default: source = library.all.filter { $0.category == category }
+            source = (prefs.recents.prefix(16) + prefs.favorites + defaults).filter { seen.insert($0).inserted }.compactMap { library.byName[$0]?.contentItem }
+        case "All emoji": source = catalog.items
+        default: source = catalog.items.filter { $0.category == category }
         }
         // Search from the default landing section covers the entire library.
-        results = library.search(search.stringValue, aliases: prefs.aliases,
-                                 in: category == "For you" && !search.stringValue.isEmpty ? nil : source)
+        let searchable = category == "For you" && !search.stringValue.isEmpty ? catalog.items : source
+        results = ContentSearch.search(search.stringValue, in: searchable, aliases: prefs.aliases)
         sectionLabel.stringValue = search.stringValue.isEmpty ? category : "Search results"
         countLabel.stringValue = "\(results.count) emoji"
         for (name, button) in sidebarButtons {
@@ -252,12 +263,12 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
         let rows = (results.count + columns - 1) / columns
         grid.frame = NSRect(x: 0, y: 0, width: 522, height: max(CGFloat(rows * 59), scroll.contentSize.height))
         for (index, item) in results.enumerated() {
-            let tile = EmojiTile(item: item, rendered: item.rendered(tone: prefs.skinTone),
+            let tile = EmojiTile(item: item, rendered: rendered(item), image: image(item),
                                  frame: NSRect(x: (index % columns) * 65, y: (index / columns) * 59, width: 62, height: 56))
-            tile.favorite = prefs.favorites.contains(item.name)
+            tile.favorite = item.kind == .unicodeEmoji && prefs.favorites.contains(item.name)
             tile.onChoose = { [weak self] in self?.onChoose?(item) }
             tile.onHover = { [weak self] in self?.select(index, scrollTo: false) }
-            tile.onFavorite = { [weak self] in self?.prefs.toggleFavorite(item); self?.refresh() }
+            tile.onFavorite = { [weak self] in self?.toggleFavorite(item); self?.refresh() }
             tile.onAlias = { [weak self] in self?.editAlias(for: item) }
             grid.addSubview(tile); tiles.append(tile)
         }
@@ -281,23 +292,25 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
     private func chooseSelected() { if results.indices.contains(selected) { onChoose?(results[selected]) } }
     private func copySelected() {
         guard results.indices.contains(selected) else { return }
-        let item = results[selected]; Inserter.copy(item.rendered(tone: prefs.skinTone)); prefs.record(item)
+        let item = results[selected]
+        if let emoji = emoji(item) { Inserter.copy(emoji.rendered(tone: prefs.skinTone)); prefs.record(emoji) }
+        else { try? MacOSImageInsertionAdapter(resolver: assetResolver).copy(item) }
         statusLabel.stringValue = "Copied. Paste anywhere."
     }
     private func toggleSelectedFavorite() {
         guard results.indices.contains(selected) else { return }
-        let item = results[selected]; prefs.toggleFavorite(item)
+        let item = results[selected]; toggleFavorite(item)
         if category == "Favorites" { refresh() }
-        else { tiles[selected].favorite = prefs.favorites.contains(item.name); updateFooter() }
+        else { tiles[selected].favorite = item.kind == .unicodeEmoji && prefs.favorites.contains(item.name); updateFooter() }
     }
     private func updateFooter() {
         guard results.indices.contains(selected) else {
             nameLabel.stringValue = "Make yourself understood."; shortcodeLabel.stringValue = "⌃⌥Space opens Popmoji from any app"
             largeEmoji.stringValue = "✦"; favoriteButton.isHidden = true; return
         }
-        let item = results[selected]; largeEmoji.stringValue = item.rendered(tone: prefs.skinTone)
+        let item = results[selected]; largeEmoji.stringValue = item.kind == .unicodeEmoji ? rendered(item) : "●"
         nameLabel.stringValue = item.description.capitalized; shortcodeLabel.stringValue = ":\(item.name):"
-        favoriteButton.isHidden = false; favoriteButton.title = prefs.favorites.contains(item.name) ? "♥" : "♡"
+        favoriteButton.isHidden = item.kind != .unicodeEmoji; favoriteButton.title = prefs.favorites.contains(item.name) ? "♥" : "♡"
         statusLabel.stringValue = lastTrusted && targetName != nil ? "↵ insert  ·  ⌘C copy" : "↵ copy  ·  esc close"
         statusLabel.toolTip = targetName.map { "Insert into \($0)" } ?? "Copy to clipboard"
     }
@@ -310,8 +323,22 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: toneButton.bounds.height), in: toneButton)
     }
     @objc private func setTone(_ sender: NSMenuItem) { prefs.skinTone = sender.tag; refresh() }
-    private func editAlias(for item: Emoji) {
-        let alert = NSAlert(); alert.messageText = "A shortcut for \(item.emoji)"
+    private func rendered(_ item: ContentItem) -> String {
+        emoji(item)?.rendered(tone: prefs.skinTone) ?? ""
+    }
+    private func emoji(_ item: ContentItem) -> Emoji? {
+        guard item.kind == .unicodeEmoji else { return nil }
+        return library.byName[item.name]
+    }
+    private func image(_ item: ContentItem) -> NSImage? {
+        assetResolver.url(for: item).flatMap(NSImage.init(contentsOf:))
+    }
+    private func toggleFavorite(_ item: ContentItem) {
+        if let emoji = emoji(item) { prefs.toggleFavorite(emoji) }
+    }
+    private func editAlias(for item: ContentItem) {
+        guard let emoji = emoji(item) else { return }
+        let alert = NSAlert(); alert.messageText = "A shortcut for \(emoji.emoji)"
         alert.informativeText = "Use letters, numbers, +, -, or _. Type :your-alias: in any app to insert this emoji."
         alert.addButton(withTitle: "Save Alias"); alert.addButton(withTitle: "Cancel")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 28))

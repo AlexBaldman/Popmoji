@@ -1,0 +1,98 @@
+{
+  "id": "pickleball-core",
+  "name": "Pickleball Core",
+  "version": 1,
+  "items": [
+    {
+      "id": "pickleball:ball",
+      "kind": "customEmoji",
+      "name": "pickleball",
+      "description": "Pickleball ball",
+      "category": "sports",
+      "aliases": ["pickleball", "pickle_ball", "pb_ball"],
+      "tags": ["pickleball", "ball", "sport", "court", "paddle"],
+      "textValue": null,
+      "assetPath": "pickleball/ball.png",
+      "altText": "pickleball ball",
+      "source": "pickleball-core"
+    },
+    {
+      "id": "pickleball:paddle",
+      "kind": "customEmoji",
+      "name": "pickleball_paddle",
+      "description": "Pickleball paddle",
+      "category": "sports",
+      "aliases": ["pickleball_paddle", "paddle", "pb_paddle"],
+      "tags": ["pickleball", "paddle", "sport", "gear"],
+      "textValue": null,
+      "assetPath": "pickleball/paddle.png",
+      "altText": "pickleball paddle",
+      "source": "pickleball-core"
+    },
+    {
+      "id": "pickleball:dink",
+      "kind": "customEmoji",
+      "name": "dink",
+      "description": "Pickleball dink shot",
+      "category": "sports",
+      "aliases": ["dink", "pickleball_dink"],
+      "tags": ["pickleball", "dink", "shot", "kitchen", "soft shot"],
+      "textValue": null,
+      "assetPath": "pickleball/dink.png",
+      "altText": "pickleball dink shot",
+      "source": "pickleball-core"
+    },
+    {
+      "id": "pickleball:hot-shot",
+      "kind": "customEmoji",
+      "name": "pickleball_hot_shot",
+      "description": "Flaming pickleball hot shot",
+      "category": "sports",
+      "aliases": ["hot_shot", "pickleball_fire"],
+      "tags": ["pickleball", "fire", "hot", "shot", "winner"],
+      "textValue": null,
+      "assetPath": "pickleball/hot-shot.png",
+      "altText": "flaming pickleball",
+      "source": "pickleball-core"
+    },
+    {
+      "id": "pickleball:love",
+      "kind": "customEmoji",
+      "name": "pickleball_love",
+      "description": "Heart-shaped pickleball",
+      "category": "sports",
+      "aliases": ["pickleball_love", "pb_love"],
+      "tags": ["pickleball", "love", "heart", "sport"],
+      "textValue": null,
+      "assetPath": "pickleball/love.png",
+      "altText": "heart-shaped pickleball",
+      "source": "pickleball-core"
+    },
+    {
+      "id": "pickleball:score",
+      "kind": "sticker",
+      "name": "pickleball_score",
+      "description": "Pickleball scoreboard",
+      "category": "sports",
+      "aliases": ["pickleball_score", "score"],
+      "tags": ["pickleball", "score", "game", "win"],
+      "textValue": null,
+      "assetPath": "pickleball/score.png",
+      "altText": "pickleball scoreboard",
+      "source": "pickleball-core"
+    },
+    {
+      "id": "pickleball:pickle-vibes",
+      "kind": "sticker",
+      "name": "pickle_vibes",
+      "description": "Cool pickle character",
+      "category": "reactions",
+      "aliases": ["pickle_vibes", "cool_pickle"],
+      "tags": ["pickleball", "pickle", "cool", "vibes", "reaction"],
+      "textValue": null,
+      "assetPath": "pickleball/pickle-vibes.png",
+      "altText": "cool pickle giving a thumbs up",
+      "source": "pickleball-core"
+    }
+  ]
+}
