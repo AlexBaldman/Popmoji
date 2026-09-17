@@ -42,6 +42,73 @@ protocol ContentProvider {
     func loadItems() throws -> [ContentItem]
 }
 
+struct BundledContentPackProvider: ContentProvider {
+    let manifestName: String
+    let bundle: Bundle
+
+    init(manifestName: String, bundle: Bundle = .module) {
+        self.manifestName = manifestName
+        self.bundle = bundle
+    }
+
+    var identifier: String { manifestName }
+    var displayName: String { manifestName }
+
+    func loadItems() throws -> [ContentItem] {
+        guard let url = bundle.url(
+            forResource: manifestName,
+            withExtension: "json",
+            subdirectory: "ContentPacks"
+        ) else {
+            throw ContentModelError.missingManifest(manifestName)
+        }
+        let manifest = try JSONDecoder().decode(
+            ContentPackManifest.self,
+            from: Data(contentsOf: url)
+        )
+        // A manifest may reserve future entries. Only publish items whose payload is
+        // actually bundled so search never advertises an unusable result.
+        return manifest.items.filter { item in
+            if item.textValue != nil { return true }
+            guard let assetPath = item.assetPath,
+                  let resourceURL = bundle.resourceURL else { return false }
+            let url = resourceURL
+                .appendingPathComponent("ContentPacks", isDirectory: true)
+                .appendingPathComponent(assetPath)
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+    }
+}
+
+struct ContentCatalog {
+    let items: [ContentItem]
+
+    init(providers: [any ContentProvider]) throws {
+        items = try providers.flatMap { try $0.loadItems() }
+    }
+
+    func search(_ text: String) -> [ContentItem] {
+        ContentSearch.search(text, in: items)
+    }
+}
+
+struct BundledContentAssetResolver {
+    let bundle: Bundle
+
+    init(bundle: Bundle = .module) {
+        self.bundle = bundle
+    }
+
+    func url(for item: ContentItem) -> URL? {
+        guard let assetPath = item.assetPath,
+              let url = bundle.resourceURL?
+            .appendingPathComponent("ContentPacks", isDirectory: true)
+            .appendingPathComponent(assetPath),
+              FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+}
+
 struct UnicodeEmojiProvider: ContentProvider {
     let library: EmojiLibrary
 
@@ -72,7 +139,8 @@ extension Emoji {
 }
 
 struct ContentSearch {
-    static func search(_ text: String, in items: [ContentItem]) -> [ContentItem] {
+    /// Returns provider-neutral content ranked by canonical names, user aliases, tags, and fuzzy matches.
+    static func search(_ text: String, in items: [ContentItem], aliases: [String: String] = [:]) -> [ContentItem] {
         let query = text
             .lowercased()
             .trimmingCharacters(in: CharacterSet(charactersIn: ": \n\t"))
@@ -82,7 +150,8 @@ struct ContentSearch {
         let words = query.split(separator: " ").map(String.init)
 
         return items.compactMap { item -> (ContentItem, Int)? in
-            let names = ([item.name] + item.aliases)
+            let customAliases = aliases.filter { $0.value == item.name }.map(\.key)
+            let names = ([item.name] + item.aliases + customAliases)
                 .map { $0.lowercased().replacingOccurrences(of: "_", with: " ") }
             let tags = item.tags.map { $0.lowercased() }
             let haystack = item.searchableText.replacingOccurrences(of: "_", with: " ")
@@ -128,4 +197,5 @@ protocol ContentInsertionAdapter {
 enum ContentModelError: Error {
     case unsupportedContent(ContentItem.ID)
     case missingPayload(ContentItem.ID)
+    case missingManifest(String)
 }

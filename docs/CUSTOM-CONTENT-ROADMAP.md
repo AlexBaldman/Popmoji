@@ -99,6 +99,17 @@ Examples:
 
 Wire the bundled pack loader into the picker on macOS and make one pickleball asset searchable and sendable end-to-end before adding a larger content-creation studio. That one completed path should earn the abstraction before the architecture grows further.
 
+### Proof implemented
+
+- `pickleball:ball` ships as a transparent bundled PNG.
+- The bundled provider publishes only manifest entries whose payloads exist, so the six reserved concepts do not create dead search results.
+- The picker searches Unicode and custom content through the shared `ContentItem` model and renders the image-backed result.
+- Choosing the ball uses `MacOSImageInsertionAdapter`: it copies an image pasteboard payload, attempts rich paste into the captured app when Accessibility is available, and leaves the payload ready for manual paste as the fallback.
+- Unicode selection still uses the existing Unicode keyboard-event insertion path.
+- The vertical-slice tests pin pack loading, search discovery, asset resolution, and insertion planning.
+
+Manual smoke test on macOS: build and launch Popmoji, search `pickleball`, select the ball in a rich-text target such as Messages or Notes, then verify that `⌘V` still pastes the ball after a target declines automatic rich paste.
+
 ## Primary references
 
 - Apple: Creating a custom keyboard — https://developer.apple.com/documentation/uikit/creating-a-custom-keyboard

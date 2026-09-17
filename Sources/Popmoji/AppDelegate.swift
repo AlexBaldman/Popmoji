@@ -125,12 +125,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         targetApp = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
         picker.show(targetName: targetApp?.localizedName)
     }
-    private func chooseFromPicker(_ item: Emoji) {
-        let rendered = item.rendered(tone: prefs.skinTone)
+    private func chooseFromPicker(_ item: ContentItem) {
         picker.hide()
-        guard Accessibility.trusted, let targetApp else { Inserter.copy(rendered); prefs.record(item); return }
+        if item.kind != .unicodeEmoji {
+            let adapter = MacOSImageInsertionAdapter(resolver: BundledContentAssetResolver())
+            guard let targetApp else { try? adapter.copy(item); return }
+            adapter.insert(item, into: targetApp) { [weak self] success in
+                if !success { self?.showInsertionFailure() }
+            }
+            return
+        }
+        guard let emoji = library.byName[item.name] else { return }
+        let rendered = emoji.rendered(tone: prefs.skinTone)
+        guard Accessibility.trusted, let targetApp else { Inserter.copy(rendered); prefs.record(emoji); return }
         Inserter.insert(rendered, into: targetApp) { [weak self] success in
-            if success { self?.prefs.record(item) }
+            if success { self?.prefs.record(emoji) }
             else { self?.showInsertionFailure() }
         }
     }

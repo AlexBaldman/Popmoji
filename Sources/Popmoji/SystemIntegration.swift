@@ -239,3 +239,53 @@ enum Inserter {
         event.post(tap: .cgSessionEventTap)
     }
 }
+
+struct MacOSImageInsertionAdapter: ContentInsertionAdapter {
+    let resolver: BundledContentAssetResolver
+
+    var identifier: String { "macos-pasteboard-image" }
+    var supportedModes: Set<InsertionMode> { [.richImage, .clipboard] }
+
+    func supports(_ item: ContentItem) -> Bool {
+        item.assetPath != nil && resolver.url(for: item) != nil
+    }
+
+    func plan(for item: ContentItem) throws -> InsertionPlan {
+        guard supports(item) else { throw ContentModelError.unsupportedContent(item.id) }
+        return InsertionPlan(mode: .richImage, textValue: nil, assetPath: item.assetPath)
+    }
+
+    func copy(_ item: ContentItem) throws {
+        _ = try plan(for: item)
+        guard let url = resolver.url(for: item), let image = NSImage(contentsOf: url) else {
+            throw ContentModelError.missingPayload(item.id)
+        }
+        NSPasteboard.general.clearContents()
+        guard NSPasteboard.general.writeObjects([image]) else {
+            throw ContentModelError.missingPayload(item.id)
+        }
+    }
+
+    func insert(_ item: ContentItem, into app: NSRunningApplication, completion: @escaping (Bool) -> Void) {
+        do { try copy(item) } catch { completion(false); return }
+        guard Accessibility.trusted, !app.isTerminated, !IsSecureEventInputEnabled() else {
+            completion(true) // The clipboard fallback is already ready for a manual paste.
+            return
+        }
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier {
+            app.activate(options: [.activateIgnoringOtherApps])
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier,
+                  !IsSecureEventInputEnabled() else { completion(true); return }
+            let source = CGEventSource(stateID: .privateState)
+            for down in [true, false] {
+                guard let event = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: down) else { continue }
+                event.flags = .maskCommand
+                event.setIntegerValueField(.eventSourceUserData, value: popmojiEventTag)
+                event.post(tap: .cgSessionEventTap)
+            }
+            completion(true)
+        }
+    }
+}
