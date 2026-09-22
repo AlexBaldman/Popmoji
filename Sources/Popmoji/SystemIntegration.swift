@@ -246,26 +246,33 @@ struct MacOSImageInsertionAdapter: ContentInsertionAdapter {
     var identifier: String { "macos-pasteboard-image" }
     var supportedModes: Set<InsertionMode> { [.richImage, .clipboard] }
 
+    /// Checks for a resolvable image payload; decoding is deferred until copy.
     func supports(_ item: ContentItem) -> Bool {
         item.assetPath != nil && resolver.url(for: item) != nil
     }
 
+    /// Plans rich-image delivery and rejects items without a resolvable asset.
     func plan(for item: ContentItem) throws -> InsertionPlan {
         guard supports(item) else { throw ContentModelError.unsupportedContent(item.id) }
         return InsertionPlan(mode: .richImage, textValue: nil, assetPath: item.assetPath)
     }
 
-    func copy(_ item: ContentItem) throws {
+    /// Loads the image before writing it; throws if decoding or the clipboard write fails.
+    /// The writer can target an isolated pasteboard or simulate a rejected write in tests.
+    func copy(_ item: ContentItem, writeImage: (NSImage) -> Bool = { image in
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.writeObjects([image])
+    }) throws {
         _ = try plan(for: item)
         guard let url = resolver.url(for: item), let image = NSImage(contentsOf: url) else {
             throw ContentModelError.missingPayload(item.id)
         }
-        NSPasteboard.general.clearContents()
-        guard NSPasteboard.general.writeObjects([image]) else {
-            throw ContentModelError.missingPayload(item.id)
+        guard writeImage(image) else {
+            throw ContentModelError.clipboardWriteFailed
         }
     }
 
+    /// Copies the image, then attempts Command-V when permitted; true means the clipboard fallback is ready, not confirmed host acceptance.
     func insert(_ item: ContentItem, into app: NSRunningApplication, completion: @escaping (Bool) -> Void) {
         do { try copy(item) } catch { completion(false); return }
         guard Accessibility.trusted, !app.isTerminated, !IsSecureEventInputEnabled() else {

@@ -1,0 +1,29 @@
+name: macOS validation
+
+on:
+  pull_request:
+  push:
+    branches: [main, feat/custom-content-foundation]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  custom-content:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test searchable content and clipboard failure paths
+        run: swift test --filter CustomContentVerticalSliceTests
+      - name: Build and verify the signed app bundle
+        run: bash scripts/build.sh
+      - name: Verify packaged content paths
+        run: |
+          resources="dist/Popmoji.app/Contents/Resources/Popmoji_Popmoji.bundle"
+          test -f "$resources/ContentPacks/pickleball.json"
+          test -f "$resources/ContentPacks/pickleball/ball.png"

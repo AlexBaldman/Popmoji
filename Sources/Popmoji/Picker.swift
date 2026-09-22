@@ -38,7 +38,7 @@ final class ActionButton: NSButton {
 
 final class EmojiTile: NSButton {
     let item: ContentItem
-    let image: NSImage?
+    let previewImage: NSImage?
     var rendered: String
     var selected = false { didSet { needsDisplay = true } }
     var favorite = false { didSet { needsDisplay = true } }
@@ -46,8 +46,9 @@ final class EmojiTile: NSButton {
     var onHover: (() -> Void)?
     var onFavorite: (() -> Void)?
     var onAlias: (() -> Void)?
+    /// Creates an accessible tile with either a Unicode rendering or a custom image preview.
     init(item: ContentItem, rendered: String, image: NSImage?, frame: NSRect) {
-        self.item = item; self.rendered = rendered; self.image = image
+        self.item = item; self.rendered = rendered; self.previewImage = image
         super.init(frame: frame)
         isBordered = false; title = ""; target = self; action = #selector(choose)
         toolTip = "\(item.description)  :\(item.name):"
@@ -55,11 +56,12 @@ final class EmojiTile: NSButton {
         setAccessibilityHelp("Insert :\(item.name):. Right-click for favorites and custom aliases.")
     }
     required init?(coder: NSCoder) { fatalError() }
+    /// Draws the selection background, content preview, and optional favorite indicator.
     override func draw(_ dirtyRect: NSRect) {
         if selected || isHighlighted {
             Palette.lavender.setFill(); NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 12, yRadius: 12).fill()
         }
-        if let image {
+        if let image = previewImage {
             image.draw(in: bounds.insetBy(dx: 11, dy: 8), from: .zero, operation: .sourceOver, fraction: 1)
         } else {
             let attributes: [NSAttributedString.Key: Any] = [.font: NSFont(name: "Apple Color Emoji", size: 29) ?? NSFont.systemFont(ofSize: 29)]
@@ -125,10 +127,10 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
     private var lastTrusted = false
     private let columns = 8
 
+    /// Builds the picker with Unicode content and any successfully loaded optional packs.
     init(library: EmojiLibrary, preferences: Preferences) {
         self.library = library; prefs = preferences
-        catalog = try! ContentCatalog(providers: [
-            UnicodeEmojiProvider(library: library),
+        catalog = ContentCatalog(library: library, optionalProviders: [
             BundledContentPackProvider(manifestName: "pickleball")
         ])
         panel = PickerPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 570),
@@ -237,6 +239,7 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
         updateFooter()
     }
     func controlTextDidChange(_ obj: Notification) { refresh() }
+    /// Filters the current collection and rebuilds tiles using the shared content search.
     func refresh() {
         let source: [ContentItem]
         switch category {
@@ -290,19 +293,31 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
     }
     private func move(_ delta: Int) { select(min(max(0, selected + delta), results.count - 1), scrollTo: true) }
     private func chooseSelected() { if results.indices.contains(selected) { onChoose?(results[selected]) } }
+    /// Copies the selection and reports success only after an image clipboard write succeeds.
     private func copySelected() {
         guard results.indices.contains(selected) else { return }
         let item = results[selected]
         if let emoji = emoji(item) { Inserter.copy(emoji.rendered(tone: prefs.skinTone)); prefs.record(emoji) }
-        else { try? MacOSImageInsertionAdapter(resolver: assetResolver).copy(item) }
+        else {
+            do { try MacOSImageInsertionAdapter(resolver: assetResolver).copy(item) }
+            catch {
+                statusLabel.stringValue = "Copy failed. Try again."
+                statusLabel.toolTip = error.localizedDescription
+                NSSound.beep()
+                return
+            }
+        }
         statusLabel.stringValue = "Copied. Paste anywhere."
+        statusLabel.toolTip = nil
     }
+    /// Toggles the selected Unicode favorite and updates the visible collection or footer.
     private func toggleSelectedFavorite() {
         guard results.indices.contains(selected) else { return }
         let item = results[selected]; toggleFavorite(item)
         if category == "Favorites" { refresh() }
         else { tiles[selected].favorite = item.kind == .unicodeEmoji && prefs.favorites.contains(item.name); updateFooter() }
     }
+    /// Shows the selected item and available actions, keeping favorites limited to Unicode.
     private func updateFooter() {
         guard results.indices.contains(selected) else {
             nameLabel.stringValue = "Make yourself understood."; shortcodeLabel.stringValue = "⌃⌥Space opens Popmoji from any app"
@@ -323,19 +338,24 @@ final class PickerController: NSObject, NSSearchFieldDelegate {
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: toneButton.bounds.height), in: toneButton)
     }
     @objc private func setTone(_ sender: NSMenuItem) { prefs.skinTone = sender.tag; refresh() }
+    /// Returns the preferred skin-tone rendering for Unicode items, or an empty image placeholder.
     private func rendered(_ item: ContentItem) -> String {
         emoji(item)?.rendered(tone: prefs.skinTone) ?? ""
     }
+    /// Looks up the original Unicode entry without treating custom content as text.
     private func emoji(_ item: ContentItem) -> Emoji? {
         guard item.kind == .unicodeEmoji else { return nil }
         return library.byName[item.name]
     }
+    /// Decodes the bundled image preview, returning nil for absent or invalid assets.
     private func image(_ item: ContentItem) -> NSImage? {
         assetResolver.url(for: item).flatMap(NSImage.init(contentsOf:))
     }
+    /// Changes favorites only for items backed by the existing Unicode library.
     private func toggleFavorite(_ item: ContentItem) {
         if let emoji = emoji(item) { prefs.toggleFavorite(emoji) }
     }
+    /// Offers alias editing for Unicode items and validates the alias before saving.
     private func editAlias(for item: ContentItem) {
         guard let emoji = emoji(item) else { return }
         let alert = NSAlert(); alert.messageText = "A shortcut for \(emoji.emoji)"

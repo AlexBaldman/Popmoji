@@ -22,6 +22,7 @@ struct ContentItem: Codable, Equatable, Hashable, Identifiable {
     let altText: String
     let source: String
 
+    /// Combines searchable metadata in lowercase for shared catalog matching.
     var searchableText: String {
         ([name, description, category] + aliases + tags)
             .joined(separator: " ")
@@ -39,6 +40,7 @@ struct ContentPackManifest: Codable, Equatable {
 protocol ContentProvider {
     var identifier: String { get }
     var displayName: String { get }
+    /// Loads available content or throws when its source cannot be read or decoded.
     func loadItems() throws -> [ContentItem]
 }
 
@@ -46,6 +48,7 @@ struct BundledContentPackProvider: ContentProvider {
     let manifestName: String
     let bundle: Bundle
 
+    /// Selects a bundled manifest; the bundle can be replaced for validation fixtures.
     init(manifestName: String, bundle: Bundle = .module) {
         self.manifestName = manifestName
         self.bundle = bundle
@@ -54,6 +57,7 @@ struct BundledContentPackProvider: ContentProvider {
     var identifier: String { manifestName }
     var displayName: String { manifestName }
 
+    /// Loads available content or throws when its source cannot be read or decoded.
     func loadItems() throws -> [ContentItem] {
         guard let url = bundle.url(
             forResource: manifestName,
@@ -83,10 +87,22 @@ struct BundledContentPackProvider: ContentProvider {
 struct ContentCatalog {
     let items: [ContentItem]
 
+    /// Loads every provider, propagating an error if any required provider fails.
     init(providers: [any ContentProvider]) throws {
         items = try providers.flatMap { try $0.loadItems() }
     }
 
+    /// Keeps Unicode available while omitting and logging any optional pack that fails to load.
+    init(library: EmojiLibrary, optionalProviders: [any ContentProvider]) {
+        var loaded = UnicodeEmojiProvider(library: library).loadItems()
+        for provider in optionalProviders {
+            do { loaded += try provider.loadItems() }
+            catch { NSLog("Skipping content pack %@: %@", provider.identifier, error.localizedDescription) }
+        }
+        items = loaded
+    }
+
+    /// Searches the loaded catalog using the shared content ranking rules.
     func search(_ text: String) -> [ContentItem] {
         ContentSearch.search(text, in: items)
     }
@@ -95,10 +111,12 @@ struct ContentCatalog {
 struct BundledContentAssetResolver {
     let bundle: Bundle
 
+    /// Resolves assets from the supplied resource bundle, defaulting to the app content bundle.
     init(bundle: Bundle = .module) {
         self.bundle = bundle
     }
 
+    /// Returns an existing asset URL beneath ContentPacks, or nil when the payload is absent.
     func url(for item: ContentItem) -> URL? {
         guard let assetPath = item.assetPath,
               let url = bundle.resourceURL?
@@ -115,12 +133,14 @@ struct UnicodeEmojiProvider: ContentProvider {
     var identifier: String { "unicode" }
     var displayName: String { "Unicode Emoji" }
 
-    func loadItems() throws -> [ContentItem] {
+    /// Maps the already-loaded Unicode library without performing fallible resource reads.
+    func loadItems() -> [ContentItem] {
         library.all.map(\.contentItem)
     }
 }
 
 extension Emoji {
+    /// Preserves the Unicode payload and metadata under a provider-qualified identity.
     var contentItem: ContentItem {
         ContentItem(
             id: "unicode:\(name)",
@@ -190,12 +210,25 @@ struct InsertionPlan: Equatable {
 protocol ContentInsertionAdapter {
     var identifier: String { get }
     var supportedModes: Set<InsertionMode> { get }
+    /// Reports whether the adapter can plan delivery for this item.
     func supports(_ item: ContentItem) -> Bool
+    /// Returns a platform delivery plan or throws when the item is unsupported.
     func plan(for item: ContentItem) throws -> InsertionPlan
 }
 
-enum ContentModelError: Error {
+enum ContentModelError: LocalizedError {
     case unsupportedContent(ContentItem.ID)
     case missingPayload(ContentItem.ID)
     case missingManifest(String)
+    case clipboardWriteFailed
+
+    /// Supplies user-facing feedback for missing content and rejected clipboard writes.
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedContent: return "This item's image is unavailable."
+        case .missingPayload: return "This item's image could not be loaded."
+        case .missingManifest(let name): return "The content pack \(name) is missing."
+        case .clipboardWriteFailed: return "The clipboard did not accept the image. Try copying again."
+        }
+    }
 }

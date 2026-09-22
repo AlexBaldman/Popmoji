@@ -106,9 +106,29 @@ Wire the bundled pack loader into the picker on macOS and make one pickleball as
 - The picker searches Unicode and custom content through the shared `ContentItem` model and renders the image-backed result.
 - Choosing the ball uses `MacOSImageInsertionAdapter`: it copies an image pasteboard payload, attempts rich paste into the captured app when Accessibility is available, and leaves the payload ready for manual paste as the fallback.
 - Unicode selection still uses the existing Unicode keyboard-event insertion path.
-- The vertical-slice tests pin pack loading, search discovery, asset resolution, and insertion planning.
+- Missing or invalid optional packs are logged and skipped; Unicode and other valid packs remain available.
+- Image copy failures appear in the picker footer or, after choosing an item hides the picker, in an alert. The copied status is shown only after the image clipboard write succeeds.
+- The vertical-slice tests cover pack loading, search and alias discovery, image decoding, insertion planning, an isolated pasteboard round trip, and missing/corrupt payloads and rejected writes.
 
-Manual smoke test on macOS: build and launch Popmoji, search `pickleball`, select the ball in a rich-text target such as Messages or Notes, then verify that `⌘V` still pastes the ball after a target declines automatic rich paste.
+### Focused review validation
+
+Run on macOS:
+
+```sh
+swift test --filter CustomContentVerticalSliceTests
+bash scripts/build.sh
+```
+
+The macOS validation workflow runs both commands and checks that the signed app contains `ContentPacks/pickleball.json` and `ContentPacks/pickleball/ball.png`. The package copies the content-pack directory intact because the loader resolves those relative paths.
+
+Manual smoke checks (still required for host-app behavior):
+
+1. Launch the built app, search `pickleball` and `pb_ball`, and confirm the ball preview appears. Reserved assets must not appear.
+2. Copy the ball and paste it into Notes. Choose it with a rich-text target active, then confirm manual `⌘V` still works if automatic paste is unavailable. Adapter success means the clipboard payload is ready; it does not confirm the target accepted the image.
+3. Confirm Unicode search, a custom Unicode alias, and Unicode insertion still work.
+4. In a disposable resource-bundle copy, remove or corrupt the pickleball manifest before launch. The picker must still open and find Unicode results. After loading a valid pack, remove or corrupt its image: copying must show failure instead of “Copied”; choosing it with no target must show an alert after the picker hides. Rebuild afterward to restore signed resources. Rejected pasteboard writes are covered by an injected test writer.
+
+Review status: CodeRabbit's last published report on `a230389` warned of 3.45% docstring coverage (80% required, 29 touched functions). The cleanup documents the touched functions and failure contracts; the authoritative coverage result remains pending a fresh CodeRabbit review. Linux resource/static checks do not establish that the AppKit build, XCTest suite, or manual smoke checks pass.
 
 ## Primary references
 

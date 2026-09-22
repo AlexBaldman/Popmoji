@@ -125,13 +125,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         targetApp = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
         picker.show(targetName: targetApp?.localizedName)
     }
+    /// Routes a picker selection through Unicode insertion or image copy, surfacing failures after hiding the picker.
     private func chooseFromPicker(_ item: ContentItem) {
         picker.hide()
         if item.kind != .unicodeEmoji {
             let adapter = MacOSImageInsertionAdapter(resolver: BundledContentAssetResolver())
-            guard let targetApp else { try? adapter.copy(item); return }
+            guard let targetApp else {
+                do { try adapter.copy(item) }
+                catch { showImageCopyFailure(error) }
+                return
+            }
             adapter.insert(item, into: targetApp) { [weak self] success in
-                if !success { self?.showInsertionFailure() }
+                if !success { self?.showImageCopyFailure() }
             }
             return
         }
@@ -143,6 +148,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             else { self?.showInsertionFailure() }
         }
     }
+    /// Explains image-copy failures even when choosing an item has already hidden the picker.
+    private func showImageCopyFailure(_ error: Error? = nil) {
+        let alert = NSAlert(); alert.messageText = "The image couldn't be copied."
+        alert.informativeText = error?.localizedDescription
+            ?? "The image could not be loaded or the clipboard did not accept it. Open Popmoji and try again."
+        alert.addButton(withTitle: "OK"); alert.runModal()
+    }
+
     private func commitInline(item: Emoji) {
         guard let query = monitor.tracker.query, let pid = monitor.targetPID,
               let app = NSRunningApplication(processIdentifier: pid) else { monitor.reset(); return }
