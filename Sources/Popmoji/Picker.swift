@@ -53,7 +53,9 @@ final class EmojiTile: NSButton {
         isBordered = false; title = ""; target = self; action = #selector(choose)
         toolTip = "\(item.description)  :\(item.name):"
         setAccessibilityLabel(item.altText)
-        setAccessibilityHelp("Insert :\(item.name):. Right-click for favorites and custom aliases.")
+        setAccessibilityHelp(item.kind == .unicodeEmoji
+            ? "Insert :\(item.name):. Right-click for favorites and custom aliases."
+            : "Insert :\(item.name):.")
     }
     required init?(coder: NSCoder) { fatalError() }
     /// Draws the selection background, content preview, and optional favorite indicator.
@@ -79,6 +81,7 @@ final class EmojiTile: NSButton {
     }
     override func mouseEntered(with event: NSEvent) { onHover?() }
     override func menu(for event: NSEvent) -> NSMenu? {
+        guard item.kind == .unicodeEmoji else { return nil }
         let menu = NSMenu()
         let favoriteItem = NSMenuItem(title: favorite ? "Remove from Favorites" : "Add to Favorites", action: #selector(toggleFavorite), keyEquivalent: "")
         favoriteItem.target = self; menu.addItem(favoriteItem)
