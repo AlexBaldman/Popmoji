@@ -125,15 +125,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         targetApp = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
         picker.show(targetName: targetApp?.localizedName)
     }
-    private func chooseFromPicker(_ item: Emoji) {
-        let rendered = item.rendered(tone: prefs.skinTone)
+    /// Routes a picker selection through Unicode insertion or image copy, surfacing failures after hiding the picker.
+    private func chooseFromPicker(_ item: ContentItem) {
         picker.hide()
-        guard Accessibility.trusted, let targetApp else { Inserter.copy(rendered); prefs.record(item); return }
+        if item.kind != .unicodeEmoji {
+            let adapter = MacOSImageInsertionAdapter(resolver: BundledContentAssetResolver())
+            guard let targetApp else {
+                do { try adapter.copy(item) }
+                catch { showImageCopyFailure(error) }
+                return
+            }
+            adapter.insert(item, into: targetApp) { [weak self] success in
+                if !success { self?.showImageCopyFailure() }
+            }
+            return
+        }
+        guard let emoji = library.byName[item.name] else { return }
+        let rendered = emoji.rendered(tone: prefs.skinTone)
+        guard Accessibility.trusted, let targetApp else { Inserter.copy(rendered); prefs.record(emoji); return }
         Inserter.insert(rendered, into: targetApp) { [weak self] success in
-            if success { self?.prefs.record(item) }
+            if success { self?.prefs.record(emoji) }
             else { self?.showInsertionFailure() }
         }
     }
+    /// Explains image-copy failures even when choosing an item has already hidden the picker.
+    private func showImageCopyFailure(_ error: Error? = nil) {
+        let alert = NSAlert(); alert.messageText = "The image couldn't be copied."
+        alert.informativeText = error?.localizedDescription
+            ?? "The image could not be loaded or the clipboard did not accept it. Open Popmoji and try again."
+        alert.addButton(withTitle: "OK"); alert.runModal()
+    }
+
     private func commitInline(item: Emoji) {
         guard let query = monitor.tracker.query, let pid = monitor.targetPID,
               let app = NSRunningApplication(processIdentifier: pid) else { monitor.reset(); return }
